@@ -1,5 +1,4 @@
 entryScript: score.py
-runtime: python
 condaFile: scoringConfig.yml
 extraDockerfileSteps:
 schemaFile:

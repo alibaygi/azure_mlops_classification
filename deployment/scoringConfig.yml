@@ -17,9 +17,8 @@
 name: insurance_inference_env
 dependencies:
   # The python interpreter version.
-  # Currently Azure ML Workbench only supports 3.5.2 and later.
-  - python=3.7.*
-  - pip=20.2.4
+  - python=3.10.*
+  - pip>=23.0
 
   - pip:
       # Base AzureML SDK
