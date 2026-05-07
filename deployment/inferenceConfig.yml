@@ -1,8 +1,8 @@
-entryScript: score.py
-condaFile: scoringConfig.yml
-extraDockerfileSteps:
-schemaFile:
-sourceDirectory:
-enableGpu: False
-baseImage:
-baseImageRegistry:
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
+name: insurance-endpoint
+auth_mode: key
+description: Managed online endpoint for insurance binary classification model
+tags:
+  model: insurance-lgbm
+  framework: lightgbm
+

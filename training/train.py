@@ -3,6 +3,7 @@ import pandas as pd
 from sklearn import metrics
 from sklearn.model_selection import train_test_split
 import lightgbm
+import mlflow
 
 # Split the dataframe into test and train data
 
@@ -34,11 +35,12 @@ def train_model(data, parameters):
     train_data = data[0]
     valid_data = data[1]
 
+    mlflow.log_params(parameters)
     model = lightgbm.train(parameters,
                            train_data,
                            valid_sets=valid_data,
                            num_boost_round=500,
-                           early_stopping_rounds=20)
+                           callbacks=[lightgbm.early_stopping(20), lightgbm.log_evaluation(50)])
 
     return model
 
@@ -53,5 +55,6 @@ def get_model_metrics(model, data):
             metrics.auc(
                 fpr, tpr))}
     print(model_metrics)
+    mlflow.log_metrics(model_metrics)
 
     return model_metrics

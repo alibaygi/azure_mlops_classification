@@ -1,31 +1,21 @@
-framework: Python
-communicator: None
-autoPrepareEnvironment: true
-maxRunDurationSeconds:
-nodeCount: 1
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+
+display_name: insurance-training-job
+experiment_name: insurance-classification
+description: Train LightGBM binary classifier on insurance dataset
+
+code: .
+command: python train_aml.py --data_path ${{inputs.insurance_data}} --model_name insurance_model
+
+inputs:
+  insurance_data:
+    type: uri_folder
+    path: azureml:insurance_dataset@latest
+
 environment:
-  name: project_environment
-  python:
-    userManagedDependencies: false
-    interpreterPath: python
-    condaDependenciesFile: conda_dependencies.yml
-    baseCondaEnvironment:
-  docker:
-    enabled: true
-    baseImage: mcr.microsoft.com/azureml/lightgbm-3.3-ubuntu20.04-py38-cpu-inference:latest
-    sharedVolumes: true
-    gpuSupport: false
-    shmSize: 1g
-    arguments: []
-history:
-  outputCollection: true
-  snapshotProject: true
-  directoriesToWatch:
-  - logs
-dataReferences:
-  workspaceblobstore:
-    dataStoreName: workspaceblobstore
-    pathOnDataStore: insurance
-    mode: download
-    overwrite: true
-    pathOnCompute: 
+  name: insurance-training-env
+  conda_file: conda_dependencies.yml
+  image: mcr.microsoft.com/azureml/lightgbm-3.3-ubuntu20.04-py38-cpu-inference:latest
+
+compute: azureml:insurance-cluster
