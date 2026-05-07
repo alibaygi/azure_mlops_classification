@@ -12,7 +12,7 @@ This project trains a LightGBM model to predict insurance outcomes (binary class
 |---|---|
 | `training/` | Model training code (`train.py`, `train_aml.py`) and SDK v2 command job YAML |
 | `deployment/` | Scoring script, managed online endpoint and deployment YAMLs |
-| `environment_setup/` | ARM template and Azure Pipelines YAML for provisioning Azure ML resources |
+| `environment_setup/` | ARM template and three Azure Pipelines YAMLs (infra, training, deployment) |
 | `tests/` | Integration tests for staging and production endpoints |
 | `data/` | Insurance dataset (`insurance.csv`) |
 
@@ -22,6 +22,16 @@ This project trains a LightGBM model to predict insurance outcomes (binary class
 - **MLflow** — experiment tracking, metric logging, model logging and registration
 - **LightGBM** — gradient boosting classifier
 - **Azure DevOps Pipelines** — CI/CD and infrastructure provisioning via ARM templates
+
+## CI/CD Pipelines
+
+All steps are automated via three Azure DevOps pipelines in `environment_setup/`:
+
+| Pipeline file | Purpose | Trigger |
+|---|---|---|
+| `iac-create-environment-pipeline-arm.yml` | Provision Azure ML workspace, storage, key vault | Manual |
+| `ml-train-pipeline.yml` | Register dataset, create compute, submit training job, register model | Auto on push to `training/`, `data/`, or `parameters.json` |
+| `ml-deploy-pipeline.yml` | Deploy staging endpoint, run integration tests, deploy production with canary traffic | Manual (after training) |
 
 ---
 
@@ -54,117 +64,45 @@ This project trains a LightGBM model to predict insurance outcomes (binary class
 
 ---
 
-### Step 2 — Upload the Dataset
+### Step 2 — Register All Three Pipelines in Azure DevOps
 
-```bash
-az ml data create \
-  --name insurance_dataset \
-  --version 1 \
-  --path data/insurance.csv \
-  --type uri_folder \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME>
-```
+Repeat **New pipeline** for each remaining YAML file:
 
----
+| Pipeline | File | Trigger |
+|---|---|---|
+| Training | `environment_setup/ml-train-pipeline.yml` | Auto on push to `training/`, `data/`, or `parameters.json` |
+| Deployment | `environment_setup/ml-deploy-pipeline.yml` | Manual (after training succeeds) |
 
-### Step 3 — Create a Compute Cluster for Training
-
-```bash
-az ml compute create \
-  --name insurance-cluster \
-  --type AmlCompute \
-  --min-instances 0 \
-  --max-instances 2 \
-  --size Standard_DS3_v2 \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME>
-```
+> Once registered, Steps 3–5 are handled **automatically** by these pipelines. They are listed below for reference only.
 
 ---
 
-### Step 4 — Run the Training Job
+### Step 3 — Training (automated by `ml-train-pipeline.yml`)
 
-```bash
-az ml job create \
-  --file training/train_insurance.runconfig \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME>
-```
+Every push to `training/` or `data/` triggers the pipeline which:
+1. Registers the dataset in Azure ML
+2. Creates the compute cluster if it doesn't exist
+3. Submits the training job and waits for completion
+4. Verifies the model is registered in the model registry
 
-This will:
-- Run `train_aml.py` on the compute cluster
-- Log parameters and AUC metric to MLflow
-- Register the model as `insurance_model` in the Azure ML model registry
-
-Monitor the run in **Azure ML Studio → Jobs**.
+To trigger manually, push any change or run the pipeline from Azure DevOps.
 
 ---
 
-### Step 5 — Deploy the Managed Online Endpoint
+### Step 4 — Deployment (automated by `ml-deploy-pipeline.yml`)
 
-**Create the endpoint:**
-```bash
-az ml online-endpoint create \
-  --file deployment/inferenceConfig.yml \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME>
-```
-
-**Deploy to staging:**
-```bash
-az ml online-deployment create \
-  --file deployment/aciDeploymentConfigStaging.yml \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME> \
-  --all-traffic
-```
-
-**Deploy to production:**
-```bash
-az ml online-deployment create \
-  --file deployment/aksDeploymentConfigProd.yml \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME>
-```
-
-**Route traffic (e.g. 10% canary to production):**
-```bash
-az ml online-endpoint update \
-  --name insurance-endpoint \
-  --traffic "staging=90 production=10" \
-  --resource-group <RESOURCE_GROUP> \
-  --workspace-name <WORKSPACE_NAME>
-```
+Run this pipeline manually from Azure DevOps after a successful training run. It:
+1. Creates the managed online endpoint (`insurance-endpoint`) if it doesn't exist
+2. Deploys the latest model to **staging** and routes 100% traffic to it
+3. Runs integration tests against the staging endpoint
+4. On test pass, deploys to **production** with 10% canary traffic split
 
 ---
 
-### Step 6 — Test the Endpoint
+### Step 5 — Monitor & Retrain
 
-Get the endpoint URL and key:
-```bash
-az ml online-endpoint show --name insurance-endpoint \
-  --resource-group <RESOURCE_GROUP> --workspace-name <WORKSPACE_NAME>
-
-az ml online-endpoint get-credentials --name insurance-endpoint \
-  --resource-group <RESOURCE_GROUP> --workspace-name <WORKSPACE_NAME>
-```
-
-Run integration tests:
-```bash
-pip install -r package_requirement/requirements.txt
-
-pytest tests/integration/ \
-  --scoreurl <ENDPOINT_URL>/score \
-  --scorekey <ENDPOINT_KEY>
-```
-
----
-
-### Step 7 — Monitor & Retrain
-
-- View metrics and runs in **Azure ML Studio → Jobs → Experiments**
-- MLflow tracking is enabled automatically — compare runs, view AUC trends
-- To retrain, re-run Step 4 with updated data or parameters in `training/parameters.json`
+- View metrics and MLflow runs in **Azure ML Studio → Jobs → Experiments**
+- Compare AUC across runs, view parameters, download artifacts
+- To retrain: update `training/parameters.json` or `data/insurance.csv` and push — the training pipeline triggers automatically
 - New model versions are registered automatically in the model registry
 
